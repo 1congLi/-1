@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(findstr \"node\")",
+      "Bash(npx vite *)",
+      "Bash(node build-electron.js)"
+    ]
+  }
+}
