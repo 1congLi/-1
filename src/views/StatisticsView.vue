@@ -448,18 +448,40 @@ async function handleExport() {
       ...exportData,
     }
 
-    // 导出JSON
-    if (confirm('是否导出为 JSON 格式？')) {
-      const result = await window.electronAPI.exportData(exportFormatData, 'json')
+    ElMessageBox.confirm(
+      '您想要导出哪种格式？\n\n' +
+      '• JSON: 完整数据，可用于导入\n' +
+      '• CSV: 表格格式，可导入Excel\n' +
+      '• Excel: 带格式美化，可直接使用',
+      '选择导出格式',
+      {
+        distinguishCancelAndClose: true,
+        confirmButtonText: '导出JSON',
+        cancelButtonText: '导出CSV',
+        closeOnClickModal: false,
+      }
+    ).then(async (action) => {
+      const format = action === 'confirm' ? 'json' : 'csv'
+      const result = await window.electronAPI.exportData(exportFormatData, format as 'json' | 'csv')
       if (result.success) {
-        ElMessage.success(`JSON 数据已导出到: ${result.path}`)
+        ElMessage.success(`${format.toUpperCase()} 数据已导出到: ${result.path}`)
       } else {
         ElMessage.error('导出失败: ' + result.error)
       }
-    }
-  } catch (error) {
+    }).catch((action) => {
+      // 用户点击取消，导出CSV
+      if (action === 'cancel') {
+        const result = window.electronAPI.exportData(exportFormatData, 'csv')
+        if (result.success) {
+          ElMessage.success('CSV 数据已导出到: ' + result.path)
+        } else {
+          ElMessage.error('导出失败: ' + result.error)
+        }
+      }
+    })
+  } catch (error: any) {
     console.error('Export error:', error)
-    ElMessage.error('导出失败')
+    ElMessage.error('导出失败: ' + error.message)
   }
 }
 

@@ -56,6 +56,10 @@ app.on('window-all-closed', () => {
 ipcMain.handle('save-data', (event, data: any) => {
   const dataPath = path.join(app.getPath('userData'), 'accounting-data.json')
   try {
+    // 确保有userCategories字段
+    if (!data.userCategories) {
+      data.userCategories = []
+    }
     fs.writeFileSync(dataPath, JSON.stringify(data, null, 2))
     return { success: true }
   } catch (err: any) {
@@ -67,9 +71,21 @@ ipcMain.handle('load-data', () => {
   const dataPath = path.join(app.getPath('userData'), 'accounting-data.json')
   if (fs.existsSync(dataPath)) {
     const data = fs.readFileSync(dataPath, 'utf-8')
-    return JSON.parse(data)
+    const parsedData = JSON.parse(data)
+
+    // 确保有userCategories字段（向后兼容）
+    if (!parsedData.userCategories) {
+      parsedData.userCategories = []
+    }
+
+    return parsedData
   }
-  return null
+  // 返回默认值（系统分类 + 空的用户分类数组）
+  return {
+    records: [],
+    categories: [],
+    userCategories: []
+  }
 })
 
 // IPC 通信 - 数据持久化（自动保存）
@@ -177,6 +193,28 @@ ipcMain.handle('restore-data', async (event, backupPath: string) => {
     return { success: true }
   } catch (error: any) {
     console.error('Restore error:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// IPC 通信 - 加载用户自定义分类
+ipcMain.handle('load-custom-categories', () => {
+  const customPath = path.join(app.getPath('userData'), 'custom-categories.json')
+  if (fs.existsSync(customPath)) {
+    const data = fs.readFileSync(customPath, 'utf-8')
+    return JSON.parse(data)
+  }
+  return { categories: [], children: [] }  // 默认返回空
+})
+
+// IPC 通信 - 保存用户自定义分类
+ipcMain.handle('save-custom-categories', (event, data: any) => {
+  const customPath = path.join(app.getPath('userData'), 'custom-categories.json')
+  try {
+    fs.writeFileSync(customPath, JSON.stringify(data, null, 2))
+    return { success: true }
+  } catch (error: any) {
+    console.error('Save custom categories error:', error)
     return { success: false, error: error.message }
   }
 })

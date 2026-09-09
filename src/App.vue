@@ -8,6 +8,13 @@
         <div class="header-right">
           <el-button
             type="primary"
+            :icon="Setting"
+            @click="goToCategoryManagement"
+          >
+            分类管理
+          </el-button>
+          <el-button
+            type="primary"
             :icon="Plus"
             @click="goToRecord"
           >
@@ -42,6 +49,10 @@ const store = useAppStore()
 
 function goToRecord() {
   router.push('/record')
+}
+
+function goToCategoryManagement() {
+  router.push('/category-management')
 }
 </script>
 

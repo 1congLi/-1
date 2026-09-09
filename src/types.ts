@@ -29,9 +29,20 @@ export interface CategoryChild {
   color: string
 }
 
+export interface UserCategory {
+  id: string
+  name: string
+  icon: string
+  color: string
+  parentId?: string   // 一级分类ID（如果是二级分类）
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AppState {
   records: Record[]
   categories: Category[]
+  userCategories: UserCategory[]  // 新增：用户自定义分类
 }
 
 export interface Statistics {

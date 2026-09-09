@@ -149,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -159,13 +159,14 @@ import {
   Delete
 } from '@element-plus/icons-vue'
 import { useAppStore } from '../store'
-import { categories } from '../data'
-import type { Record } from '../types'
 import dayjs from 'dayjs'
 
 const router = useRouter()
 const route = useRoute()
 const store = useAppStore()
+
+// 获取所有分类（系统 + 用户）
+const categories = computed(() => store.getAllCategories())
 
 // 表单数据
 const form = ref<{
@@ -209,12 +210,12 @@ function initForm() {
     }
   } else {
     // 新增模式，默认选择今日的第一个分类
-    const todayCategory = categories[0]?.children?.[0]
-    if (todayCategory) {
-      selectedCategory1.value = categories[0].id
-      selectedCategory2.value = todayCategory.id
-      form.value.category1 = categories[0].id
-      form.value.category2 = todayCategory.id
+    const firstCategory = categories.value[0]
+    if (firstCategory && firstCategory.children?.[0]) {
+      selectedCategory1.value = firstCategory.id
+      selectedCategory2.value = firstCategory.children[0].id
+      form.value.category1 = firstCategory.id
+      form.value.category2 = firstCategory.children[0].id
     }
   }
 }
@@ -223,7 +224,7 @@ function initForm() {
 function selectCategory1(categoryId: string) {
   selectedCategory1.value = categoryId
   selectedCategory2.value = ''
-  const category = categories.find((c) => c.id === categoryId)
+  const category = categories.value.find((c) => c.id === categoryId)
   if (category?.children?.[0]) {
     selectedCategory2.value = category.children[0].id
     form.value.category1 = categoryId
@@ -293,7 +294,18 @@ function handleImageRemove() {
 // 预览图片
 function previewImage() {
   if (form.value.attachment?.data) {
-    window.electronAPI.previewImage(form.value.attachment.data)
+    if (window.electronAPI && typeof window.electronAPI.previewImage === 'function') {
+      window.electronAPI.previewImage(form.value.attachment.data)
+    } else {
+      // 回退到浏览器原生预览
+      const win = window.open('', '_blank')
+      if (win) {
+        const img = win.document.createElement('img')
+        img.src = form.value.attachment.data
+        img.style.maxWidth = '100%'
+        win.document.body.appendChild(img)
+      }
+    }
   }
 }
 
@@ -303,32 +315,41 @@ function removeImage() {
 }
 
 // 保存记录
-function handleSave() {
+async function handleSave() {
   if (form.value.amount <= 0) {
+    ElMessage.warning('请输入有效金额')
     return
   }
   if (!form.value.category1 || !form.value.category2) {
+    ElMessage.warning('请选择分类')
     return
   }
 
-  const recordData = {
-    amount: form.value.amount,
-    date: dayjs(form.value.date).format('YYYY-MM-DD'),
-    category1: form.value.category1,
-    category2: form.value.category2,
-    note: form.value.note || undefined,
-    attachment: form.value.attachment,
-  }
+  try {
+    const recordData = {
+      amount: form.value.amount,
+      date: dayjs(form.value.date).format('YYYY-MM-DD'),
+      category1: form.value.category1,
+      category2: form.value.category2,
+      note: form.value.note || undefined,
+      attachment: form.value.attachment,
+    }
 
-  if (route.query.id) {
-    // 编辑现有记录
-    store.updateRecord(route.query.id as string, recordData)
-  } else {
-    // 添加新记录
-    store.addRecord(recordData)
-  }
+    if (route.query.id) {
+      // 编辑现有记录
+      store.updateRecord(route.query.id as string, recordData)
+      ElMessage.success('记录更新成功')
+    } else {
+      // 添加新记录
+      store.addRecord(recordData)
+      ElMessage.success('记录添加成功')
+    }
 
-  goBack()
+    goBack()
+  } catch (error: any) {
+    console.error('Save record error:', error)
+    ElMessage.error('保存失败: ' + error.message)
+  }
 }
 
 // 返回
@@ -337,7 +358,9 @@ function goBack() {
 }
 
 // 初始化
-initForm()
+onMounted(() => {
+  initForm()
+})
 </script>
 
 <style scoped lang="css">

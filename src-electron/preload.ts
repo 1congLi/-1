@@ -1,5 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import * as electron from 'electron'
+
+// 扩展 Window 接口
+declare global {
+  interface Window {
+    electronAPI: {
+      saveData: (data: any) => Promise<{ success: boolean; error?: string }>
+      loadData: () => Promise<any>
+      getAppDataPath: () => Promise<string>
+      exportData: (data: any, format: 'json' | 'csv' | 'xlsx') => Promise<{ success: boolean; path?: string; error?: string }>
+      backupData: (data: any) => Promise<{ success: boolean; path?: string; error?: string }>
+      restoreData: (backupPath: string) => Promise<{ success: boolean; error?: string }>
+      loadCustomCategories: () => Promise<any>
+      saveCustomCategories: (data: any) => Promise<{ success: boolean; error?: string }>
+      onAppReady: (callback: () => void) => void
+      previewImage: (base64Data: string) => void
+    }
+  }
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // 数据存储
@@ -16,24 +33,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 数据恢复
   restoreData: (backupPath: string) => ipcRenderer.invoke('restore-data', backupPath),
 
+  // 用户自定义分类
+  loadCustomCategories: () => ipcRenderer.invoke('load-custom-categories'),
+  saveCustomCategories: (data: any) => ipcRenderer.invoke('save-custom-categories', data),
+
   // 应用信息
   onAppReady: (callback: () => void) => {
     ipcRenderer.on('app-ready', callback)
   },
 
-  // 图片预览功能（使用electron对象）
+  // 图片预览功能
   previewImage: (base64Data: string) => {
-    if (electron.dialog && electron.shell) {
-      electron.dialog.showMessageBox({
-        type: 'info',
-        title: '图片预览',
-        message: '点击确定在新窗口中查看图片',
-        buttons: ['确定', '取消'],
-      }).then(({ response }) => {
-        if (response === 0) {
-          electron.shell.openExternal(`data:image/png;base64,${base64Data}`)
-        }
-      })
+    try {
+      const { dialog, shell } = require('electron')
+      if (dialog && shell) {
+        dialog.showMessageBox({
+          type: 'info',
+          title: '图片预览',
+          message: '点击确定在新窗口中查看图片',
+          buttons: ['确定', '取消'],
+        }).then(({ response }) => {
+          if (response === 0) {
+            shell.openExternal(`data:image/png;base64,${base64Data}`)
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Preview image error:', error)
     }
   },
 })

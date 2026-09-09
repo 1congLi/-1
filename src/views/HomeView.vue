@@ -274,6 +274,9 @@ function handleSearch() {
   // 搜索时重置分类筛选
   store.selectedCategory = null
   currentPage.value = 1
+  if (searchKeyword.value.trim()) {
+    ElMessage.info('搜索功能已应用')
+  }
 }
 </script>
 

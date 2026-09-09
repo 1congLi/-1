@@ -4,6 +4,7 @@ import HomeView from '../views/HomeView.vue'
 import RecordView from '../views/RecordView.vue'
 import StatisticsView from '../views/StatisticsView.vue'
 import DataManagementView from '../views/DataManagementView.vue'
+import CategoryManagementView from '../views/CategoryManagementView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -27,6 +28,11 @@ const router = createRouter({
       path: '/data-management',
       name: 'data-management',
       component: DataManagementView,
+    },
+    {
+      path: '/category-management',
+      name: 'category-management',
+      component: CategoryManagementView,
     },
   ],
 })

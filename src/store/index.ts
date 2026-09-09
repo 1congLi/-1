@@ -1,7 +1,7 @@
 import { createPinia } from 'pinia'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AppState, Record } from '../types'
+import type { AppState, Record, UserCategory } from '../types'
 import { categories } from '../data'
 import dayjs from 'dayjs'
 
@@ -11,6 +11,7 @@ export const useAppStore = defineStore('app', () => {
   const currentView = ref<'today' | 'week' | 'month' | 'all'>('today')
   const selectedCategory = ref<string | null>(null)
   const selectedDateRange = ref<[Date, Date] | null>(null)
+  const userCategories = ref<UserCategory[]>([])  // 新增：用户自定义分类
 
   // 预算管理
   const monthlyBudget = ref(5000)
@@ -33,9 +34,11 @@ export const useAppStore = defineStore('app', () => {
     const data = await window.electronAPI.loadData()
     if (data) {
       records.value = data.records || []
+      userCategories.value = data.userCategories || []  // 加载用户分类
     } else {
       // 初始空数据
       records.value = []
+      userCategories.value = []
     }
     // 保存分类数据
     await saveData()
@@ -48,6 +51,7 @@ export const useAppStore = defineStore('app', () => {
     const data = {
       records: records.value,
       categories,
+      userCategories: userCategories.value,
     }
     await window.electronAPI.saveData(data)
   }
@@ -251,6 +255,122 @@ export const useAppStore = defineStore('app', () => {
     return todayRecords.reduce((sum, r) => sum + r.amount, 0)
   }
 
+  // 用户分类相关方法
+
+  // 检查分类是否为系统预设
+  function isSystemCategory(categoryId: string): boolean {
+    return categories.some(c => c.id === categoryId)
+  }
+
+  // 获取所有分类（系统 + 用户，混合显示）
+  function getAllCategories(): Category[] {
+    const result = [...categories]  // 复制系统分类
+
+    // 添加用户自定义的一级分类
+    const userLevel1 = userCategories.value.filter(c => !c.parentId)
+    userLevel1.forEach(userCat => {
+      result.push({
+        id: userCat.id,
+        name: userCat.name,
+        icon: userCat.icon,
+        color: userCat.color,
+        children: []  // 用户自定义的二级分类
+      })
+    })
+
+    // 添加用户自定义的二级分类
+    const userLevel2 = userCategories.value.filter(c => c.parentId)
+    userLevel2.forEach(userCat => {
+      const parent = result.find(c => c.id === userCat.parentId)
+      if (parent) {
+        parent.children = parent.children || []
+        parent.children.push({
+          id: userCat.id,
+          name: userCat.name,
+          icon: userCat.icon,
+          color: userCat.color,
+        })
+      }
+    })
+
+    return result
+  }
+
+  // 加载用户分类
+  async function loadUserCategories() {
+    const customData = await window.electronAPI.loadCustomCategories()
+    if (customData && customData.categories) {
+      userCategories.value = customData.categories.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        icon: cat.icon,
+        color: cat.color,
+        parentId: cat.parentId,
+        createdAt: cat.createdAt,
+        updatedAt: cat.updatedAt
+      }))
+    } else {
+      userCategories.value = []
+    }
+    return userCategories.value
+  }
+
+  // 创建新分类
+  function createUserCategory(data: {
+    name: string
+    icon: string
+    color: string
+    parentId?: string
+  }): UserCategory {
+    const newCategory: UserCategory = {
+      ...data,
+      id: Date.now().toString(),
+      createdAt: dayjs().toISOString(),
+      updatedAt: dayjs().toISOString(),
+    }
+    // 新分类添加到最前面
+    userCategories.value.unshift(newCategory)
+    saveData()
+    return newCategory
+  }
+
+  // 更新分类（名称、图标、颜色）
+  function updateUserCategory(id: string, updates: {
+    name?: string
+    icon?: string
+    color?: string
+  }): void {
+    const index = userCategories.value.findIndex(c => c.id === id)
+    if (index !== -1) {
+      userCategories.value[index] = {
+        ...userCategories.value[index],
+        ...updates,
+        updatedAt: dayjs().toISOString()
+      }
+      saveData()
+    }
+  }
+
+  // 删除分类（如果有记录则阻止）
+  function deleteUserCategory(id: string): void {
+    // 检查是否有记录使用该分类
+    const hasRecords = records.value.some(r =>
+      r.category1 === id || r.category2 === id
+    )
+
+    if (hasRecords) {
+      throw new Error('该分类下有记录，无法删除')
+    }
+
+    userCategories.value = userCategories.value.filter(c => c.id !== id)
+    saveData()
+  }
+
+  // 获取用户自定义的分类
+  function getUserCategories(): UserCategory[] {
+    return userCategories.value
+  }
+
   return {
     // 状态
     records,
@@ -258,6 +378,7 @@ export const useAppStore = defineStore('app', () => {
     selectedCategory,
     monthlyBudget,
     budgetAlerts,
+    userCategories,
 
     // 方法
     init,
@@ -274,5 +395,13 @@ export const useAppStore = defineStore('app', () => {
     setMonthlyBudget,
     getBudgetProgress,
     checkBudgetAlerts,
+
+    // 用户分类管理
+    getUserCategories,
+    createUserCategory,
+    updateUserCategory,
+    deleteUserCategory,
+    isSystemCategory,
+    getAllCategories,
   }
 })

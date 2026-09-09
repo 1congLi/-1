@@ -5,7 +5,14 @@
       "Bash(npm run *)",
       "Bash(npx electron *)",
       "Bash(node simple-test.js)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh --version)",
+      "Bash(gh repo *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(curl -I https://github.com)"
     ]
   }
 }
