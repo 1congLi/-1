@@ -1,6 +1,6 @@
 import { createPinia } from 'pinia'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { AppState, Record, UserCategory } from '../types'
 import { categories } from '../data'
 import dayjs from 'dayjs'
@@ -21,97 +21,29 @@ export const useAppStore = defineStore('app', () => {
     monthly: true,
   })
 
-  // 缓存
-  let _filteredRecordsCache: Record[] | null = null
-  let _currentFilterKey = ''
-
-  function clearFilterCache() {
-    _filteredRecordsCache = null
-  }
-
-  // 初始化应用
-  async function init() {
-    const data = await window.electronAPI.loadData()
-    if (data) {
-      records.value = data.records || []
-      userCategories.value = data.userCategories || []  // 加载用户分类
-    } else {
-      // 初始空数据
-      records.value = []
-      userCategories.value = []
-    }
-    // 保存分类数据
-    await saveData()
-    // 清空缓存
-    clearFilterCache()
-  }
-
-  // 保存数据
-  async function saveData() {
-    const data = {
-      records: records.value,
-      categories,
-      userCategories: userCategories.value,
-    }
-    await window.electronAPI.saveData(data)
-  }
-
-  // 添加记录
-  function addRecord(record: Omit<Record, 'id' | 'createdAt'>) {
-    const newRecord: Record = {
-      ...record,
-      id: Date.now().toString(),
-      createdAt: dayjs().toISOString(),
-    }
-    records.value.unshift(newRecord)
-    saveData()
-    clearFilterCache() // 清空缓存
-    return newRecord
-  }
-
-  // 更新记录
-  function updateRecord(id: string, record: Partial<Omit<Record, 'id' | 'createdAt'>>) {
-    const index = records.value.findIndex((r) => r.id === id)
-    if (index !== -1) {
-      records.value[index] = { ...records.value[index], ...record }
-      saveData()
-      clearFilterCache() // 清空缓存
-    }
-  }
-
-  // 删除记录
-  function deleteRecord(id: string) {
-    records.value = records.value.filter((r) => r.id !== id)
-    saveData()
-    clearFilterCache() // 清空缓存
-  }
-
-  // 获取筛选后的记录（带缓存）
-  function getFilteredRecords() {
-    const filterKey = `${currentView.value}-${selectedCategory.value || 'none'}`
-
-    // 如果缓存有效，直接返回
-    if (_filteredRecordsCache && _currentFilterKey === filterKey) {
-      return _filteredRecordsCache
-    }
-
+  // 筛选后的记录：用 computed 代替手写缓存。computed 的依赖由 Vue 自动
+  // 追踪、变化时自动重算；手写的非响应式缓存曾导致"数据已加载但界面
+  // 不刷新"的问题（渲染效果在缓存命中路径上丢失依赖订阅）
+  const filteredRecords = computed<Record[]>(() => {
     let filtered = [...records.value]
 
-    // 日期筛选
+    // 日期筛选：用 dayjs 按天粒度比较，避免日期字符串与 ISO 时间戳直接
+    // 字符串比较导致的时区相关 bug
     const today = dayjs()
-    const todayStart = today.startOf('day').toISOString()
-    const todayEnd = today.endOf('day').toISOString()
-
     if (currentView.value === 'today') {
-      filtered = filtered.filter((r) => r.date >= todayStart && r.date <= todayEnd)
+      filtered = filtered.filter((r) => dayjs(r.date).isSame(today, 'day'))
     } else if (currentView.value === 'week') {
-      const weekStart = today.startOf('week').toISOString()
-      const weekEnd = today.endOf('week').toISOString()
-      filtered = filtered.filter((r) => r.date >= weekStart && r.date <= weekEnd)
+      const weekStart = today.startOf('week')
+      const weekEnd = today.endOf('week')
+      filtered = filtered.filter(
+        (r) => !dayjs(r.date).isBefore(weekStart, 'day') && !dayjs(r.date).isAfter(weekEnd, 'day')
+      )
     } else if (currentView.value === 'month') {
-      const monthStart = today.startOf('month').toISOString()
-      const monthEnd = today.endOf('month').toISOString()
-      filtered = filtered.filter((r) => r.date >= monthStart && r.date <= monthEnd)
+      const monthStart = today.startOf('month')
+      const monthEnd = today.endOf('month')
+      filtered = filtered.filter(
+        (r) => !dayjs(r.date).isBefore(monthStart, 'day') && !dayjs(r.date).isAfter(monthEnd, 'day')
+      )
     }
 
     // 分类筛选
@@ -119,28 +51,12 @@ export const useAppStore = defineStore('app', () => {
       filtered = filtered.filter((r) => r.category2 === selectedCategory.value || r.category1 === selectedCategory.value)
     }
 
-    // 更新缓存
-    _filteredRecordsCache = filtered
-    _currentFilterKey = filterKey
-
     return filtered
-  }
+  })
 
-  // 获取总支出
-  function getTotalAmount() {
-    return getFilteredRecords().reduce((sum, record) => sum + record.amount, 0)
-  }
-
-  // 获取统计数据（带缓存）
-  let _statisticsCache: any = null
-
-  function getStatistics() {
-    const filtered = getFilteredRecords()
-
-    // 如果有缓存且数据未变，返回缓存
-    if (_statisticsCache && _statisticsCache.length === filtered.length) {
-      return _statisticsCache
-    }
+  // 统计数据：同样用 computed 派生
+  const statistics = computed(() => {
+    const filtered = filteredRecords.value
 
     // 按日期分组
     const dailyMap = new Map<string, number>()
@@ -163,7 +79,7 @@ export const useAppStore = defineStore('app', () => {
       categoryMap.get(key)!.amount += record.amount
     })
 
-    const statistics = {
+    return {
       totalAmount: filtered.reduce((sum, r) => sum + r.amount, 0),
       dailyTrend: Array.from(dailyMap.entries()).map(([date, amount]) => ({ date, amount })),
       categoryDistribution: Array.from(categoryMap.entries()).map(([key, value]) => ({
@@ -171,25 +87,91 @@ export const useAppStore = defineStore('app', () => {
         amount: value.amount,
       })),
     }
+  })
 
-    // 更新缓存
-    _statisticsCache = statistics
+  // 初始化应用（从磁盘加载持久化数据）
+  async function init() {
+    // 非 Electron 环境（如纯浏览器打开）下无法读写本地文件，退化为内存模式
+    if (!window.electronAPI) return
+    const data = await window.electronAPI.loadData()
+    if (data) {
+      records.value = data.records || []
+      userCategories.value = data.userCategories || []  // 加载用户分类
+    } else {
+      // 初始空数据
+      records.value = []
+      userCategories.value = []
+    }
+    // 保存分类数据
+    await saveData()
+  }
 
-    return statistics
+  // 保存数据
+  async function saveData() {
+    if (!window.electronAPI) return
+    const data = {
+      records: records.value,
+      categories,
+      userCategories: userCategories.value,
+    }
+    // Vue 响应式 Proxy 无法被 Electron IPC 结构化克隆（An object could not be cloned），
+    // 必须先深拷贝为纯对象再传输，否则静默失败、数据不落盘
+    const plainData = JSON.parse(JSON.stringify(data))
+    await window.electronAPI.saveData(plainData)
+  }
+
+  // 添加记录
+  function addRecord(record: Omit<Record, 'id' | 'createdAt'>) {
+    const newRecord: Record = {
+      ...record,
+      id: Date.now().toString(),
+      createdAt: dayjs().toISOString(),
+    }
+    records.value.unshift(newRecord)
+    saveData()
+    return newRecord
+  }
+
+  // 更新记录
+  function updateRecord(id: string, record: Partial<Omit<Record, 'id' | 'createdAt'>>) {
+    const index = records.value.findIndex((r) => r.id === id)
+    if (index !== -1) {
+      records.value[index] = { ...records.value[index], ...record }
+      saveData()
+    }
+  }
+
+  // 删除记录
+  function deleteRecord(id: string) {
+    records.value = records.value.filter((r) => r.id !== id)
+    saveData()
+  }
+
+  // 获取筛选后的记录
+  function getFilteredRecords() {
+    return filteredRecords.value
+  }
+
+  // 获取总支出
+  function getTotalAmount() {
+    return filteredRecords.value.reduce((sum, record) => sum + record.amount, 0)
+  }
+
+  // 获取统计数据
+  function getStatistics() {
+    return statistics.value
   }
 
   // 重置视图状态
   function resetFilters() {
     currentView.value = 'today'
     selectedCategory.value = null
-    clearFilterCache() // 清空缓存
   }
 
   // 预算管理相关函数
   function setMonthlyBudget(amount: number) {
     monthlyBudget.value = amount
     saveData()
-    clearFilterCache() // 清空缓存
   }
 
   function getBudgetProgress() {
@@ -203,14 +185,10 @@ export const useAppStore = defineStore('app', () => {
 
   function getMonthlySpent() {
     const today = dayjs()
-    const monthStart = today.startOf('month').toISOString()
-    const monthEnd = today.endOf('month').toISOString()
-
-    const monthRecords = records.value.filter(
-      r => r.date >= monthStart && r.date <= monthEnd
+    return records.value.filter((r) => dayjs(r.date).isSame(today, 'month')).reduce(
+      (sum, r) => sum + r.amount,
+      0
     )
-
-    return monthRecords.reduce((sum, r) => sum + r.amount, 0)
   }
 
   function checkBudgetAlerts() {
@@ -245,14 +223,11 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function getTodaySpent() {
-    const today = dayjs().startOf('day').toISOString()
-    const tomorrow = dayjs().endOf('day').toISOString()
-
-    const todayRecords = records.value.filter(
-      r => r.date >= today && r.date <= tomorrow
+    const today = dayjs()
+    return records.value.filter((r) => dayjs(r.date).isSame(today, 'day')).reduce(
+      (sum, r) => sum + r.amount,
+      0
     )
-
-    return todayRecords.reduce((sum, r) => sum + r.amount, 0)
   }
 
   // 用户分类相关方法
@@ -298,6 +273,7 @@ export const useAppStore = defineStore('app', () => {
 
   // 加载用户分类
   async function loadUserCategories() {
+    if (!window.electronAPI) return []
     const customData = await window.electronAPI.loadCustomCategories()
     if (customData && customData.categories) {
       userCategories.value = customData.categories.map(cat => ({

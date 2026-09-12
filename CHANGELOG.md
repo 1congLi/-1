@@ -1,5 +1,17 @@
 # 黑马记账更新日志
 
+## [1.0.1] - 2026-09-12
+
+### 🐛 修复：数据持久化失效
+
+- **保存静默失败**：Vue 响应式 Proxy 无法通过 Electron IPC 结构化克隆（"An object could not be cloned"），导致记录保存时 IPC 调用直接失败、数据不落盘。修复：`saveData`、数据备份、数据导出前先用 `JSON.parse(JSON.stringify(...))` 深拷贝为纯对象（`src/store/index.ts`、`src/views/DataManagementView.vue`）
+- **启动不加载历史数据**：应用启动时没有任何地方调用 `store.init()`，重启后记录列表为空。修复：`App.vue` 挂载时调用 `store.init()` 从磁盘加载
+- **数据已加载但界面不刷新**：store 中手写的非响应式筛选缓存在渲染路径上丢失响应式依赖，导致冷启动后首页显示"暂无支出记录"。修复：移除手写缓存，`getFilteredRecords`/`getStatistics` 改为 Vue `computed` 派生
+- **日期筛选时区隐患**：日期字符串（`YYYY-MM-DD`）与 ISO 时间戳直接字符串比较在部分时区下会把当天记录过滤掉。修复：统一改用 dayjs 按天/月粒度比较
+- **其他**：纯浏览器打开时对 `window.electronAPI` 缺失加保护（退化为内存模式）；补齐 `App.vue` 遗漏的 `Setting` 图标导入（消除 Vue 警告）
+
+数据存储位置：`%APPDATA%\heima-accounting\accounting-data.json`（Windows）/ `~/Library/Application Support/heima-accounting/`（macOS）
+
 ## [1.0.0] - 2026-09-09
 
 ### ✨ 新功能

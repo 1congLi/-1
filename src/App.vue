@@ -40,12 +40,18 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Setting } from '@element-plus/icons-vue'
 import { useAppStore } from './store'
 
 const router = useRouter()
 const store = useAppStore()
+
+// 启动时从本地磁盘加载历史数据，保证重启后记录仍可见
+onMounted(() => {
+  store.init()
+})
 
 function goToRecord() {
   router.push('/record')

@@ -414,8 +414,8 @@ async function handleBackup() {
       categories,
       backupTime: new Date().toISOString(),
     }
-
-    const result = await window.electronAPI.backupData(data)
+    // store.records 是响应式 Proxy，无法通过 IPC 结构化克隆，需转为纯对象
+    const result = await window.electronAPI.backupData(JSON.parse(JSON.stringify(data)))
     if (result.success) {
       ElMessage.success(`数据已备份到: ${result.path}`)
       await loadBackupFiles()
@@ -537,7 +537,7 @@ async function handleExport(format) {
       exportTime: new Date().toISOString(),
     }
 
-    const result = await window.electronAPI.exportData(data, format)
+    const result = await window.electronAPI.exportData(JSON.parse(JSON.stringify(data)), format)
     if (result.success) {
       ElMessage.success(`${format.toUpperCase()} 数据已导出到: ${result.path}`)
     } else {
